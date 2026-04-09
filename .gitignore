@@ -1,0 +1,24 @@
+# Compiled class files
+out/
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Maven
+dependency-reduced-pom.xml
+
+# User data
+users.txt
+
+# Zip archives
+*.zip
