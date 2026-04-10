@@ -318,9 +318,8 @@ public class DashBoardView extends BorderPane {
 
     private void handlePlayerVsBot() {
         System.out.println("Player vs Bot mode selected");
-        // Open Player vs Bot game
-       chesslan chessGame = new chesslan();
-       chessGame.start(stage);
+        chessboardAI chessGame = new chessboardAI();
+        chessGame.start(stage);
     }
 
     private void handleLANPlayer() {

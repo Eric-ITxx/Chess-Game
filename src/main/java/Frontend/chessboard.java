@@ -2,7 +2,10 @@ package Frontend;
 
 import gamelogic.*;
 
+import javafx.animation.Interpolator;
+import javafx.animation.TranslateTransition;
 import javafx.application.Application;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -10,12 +13,14 @@ import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
+import javafx.scene.Node;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
-import javafx.scene.control.Alert;
+import javafx.util.Duration;
 
 import java.util.List;
 
@@ -23,6 +28,11 @@ public class chessboard extends Application {
 
     private static final int SIZE = 80;
     private static final int BOARD_SIZE = 8;
+
+    // Board color scheme — silverish black
+    private static final Color LIGHT_SQ  = Color.rgb(180, 188, 196); // steel silver
+    private static final Color DARK_SQ   = Color.rgb(34, 34, 34);    // near black
+    private static final Color SEL_COLOR = Color.rgb(255, 210, 30, 0.9); // gold selection
     private static final String FILES = "abcdefgh";
 
     private static final String BG_PATH = "file:src/main/resources/Dash.png";
@@ -58,6 +68,10 @@ public class chessboard extends Application {
     private piece selectedPiece = null;
     private int selectedRow = -1, selectedCol = -1;
 
+    // Animation
+    private Pane animationLayer;
+    private boolean isAnimating = false;
+
 
     // Images
     private Image whitePawn, whiteRook, whiteKnight, whiteBishop, whiteQueen, whiteKing;
@@ -90,8 +104,11 @@ public class chessboard extends Application {
         pauseOverlay = buildPauseOverlay();
         VBox buttons = buildRightButtons();
 
+        animationLayer = new Pane();
+        animationLayer.setMouseTransparent(true);
+
         BorderPane root = new BorderPane();
-        root.setCenter(new StackPane(board, pauseOverlay));
+        root.setCenter(new StackPane(board, pauseOverlay, animationLayer));
         root.setRight(buttons);
 
         root.setStyle(
@@ -112,26 +129,19 @@ public class chessboard extends Application {
 
     // ================= START MENU =================
     private void askLoadOrNewGame() {
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("Chess PvsP");
-        alert.setHeaderText("Start Game");
-        alert.setContentText("Choose an option:");
-
-        ButtonType newGame = new ButtonType("New Game");
-        ButtonType loadGame = new ButtonType("Load Saved");
-        alert.getButtonTypes().setAll(newGame, loadGame);
-
-        alert.showAndWait().ifPresent(btn -> {
-            if (btn == loadGame) {
-                try {
-                    Board.displaysboard();
-                    gamelogic.Color saved = Snapshot.getColor();
-                    if (saved != null) turnManager = new Playerturn(saved);
-                } catch (Exception e) {
-                    showAlert("Could not load save. Starting new.");
-                }
+        String choice = ChessDialog.showConfirm(stageRef,
+                "Player vs Player",
+                "Would you like to continue a saved game or start fresh?",
+                "New Game", "Load Saved");
+        if ("Load Saved".equals(choice)) {
+            try {
+                Board.displaysboard();
+                gamelogic.Color saved = Snapshot.getColor();
+                if (saved != null) turnManager = new Playerturn(saved);
+            } catch (Exception e) {
+                ChessDialog.showInfo(stageRef, "Chess", "Could not load save. Starting new.");
             }
-        });
+        }
     }
 
     // ================= BOARD UI =================
@@ -171,8 +181,8 @@ public class chessboard extends Application {
             for (int c = 0; c < BOARD_SIZE; c++) {
 
                 Rectangle rect = new Rectangle(SIZE, SIZE);
-                rect.setFill((r + c) % 2 == 0 ? Color.LIGHTBLUE : Color.BEIGE);
-                rect.setStroke(Color.GRAY);
+                rect.setFill((r + c) % 2 == 0 ? LIGHT_SQ : DARK_SQ);
+                rect.setStroke(Color.rgb(15, 15, 15));
 
                 StackPane cell = new StackPane(rect);
                 int rr = r, cc = c;
@@ -343,38 +353,21 @@ public class chessboard extends Application {
     private void refreshBoardFromModel() {
         for (StackPane[] row : cells)
             for (StackPane cell : row)
-                cell.getChildren().removeIf(n -> (n instanceof ImageView) || (n instanceof Label));
+                cell.getChildren().removeIf(n ->
+                    "pieceNode".equals(n.getId()) || "legalDot".equals(n.getId()) || n instanceof ImageView);
 
         piece[][] model = Board.getBoard();
-
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                piece p = model[r][c];
-                if (p != null) {
-                    Image img = getImageForPiece(p);
-                    if (img != null) {
-                        ImageView iv = new ImageView(img);
-                        iv.setFitWidth(SIZE * 0.85);
-                        iv.setFitHeight(SIZE * 0.85);
-                        cells[r][c].getChildren().add(iv);
-                    }
-//                    else {
-//                        Label sym = new Label(String.valueOf(p.getSymbol()));
-//                        sym.setTextFill(Color.BLACK);
-//                        sym.setStyle("-fx-font-size: 24; -fx-font-weight: bold;");
-//                        cells[r][c].getChildren().add(sym);
-//                    }
-                }
-            }
-        }
-
-//        updateTurnText();
+        for (int r = 0; r < 8; r++)
+            for (int c = 0; c < 8; c++)
+                if (model[r][c] != null)
+                    cells[r][c].getChildren().add(
+                        PieceRenderer.createPiece(model[r][c].getType(), model[r][c].getColor(), SIZE));
     }
 
     // ================= HUMAN MOVE (PvsP) =================
     private void handleHumanClick(int r, int c) {
 
-        if (paused) return;
+        if (paused || isAnimating) return;
 
         piece[][] model = Board.getBoard();
         piece clicked = model[r][c];
@@ -387,12 +380,26 @@ public class chessboard extends Application {
                 selectedRow = r;
                 selectedCol = c;
 
-                cellRects[r][c].setFill(Color.GOLD);
+                cellRects[r][c].setFill(SEL_COLOR);
 
                 List<String> moves = clicked.getPossibleMoves(model);
                 for (String mv : moves) {
-                    int[] rc = piece.algebraicToRC(mv);
-                    cellRects[rc[0]][rc[1]].setFill(Color.LIGHTGREEN);
+                    if (Board.isMoveLegal(clicked, mv)) {
+                        int[] rc = piece.algebraicToRC(mv);
+                        // Show a dot for empty squares, a ring for captures
+                        boolean isCapture = model[rc[0]][rc[1]] != null;
+                        Circle dot = new Circle(isCapture ? 34 : 11);
+                        if (isCapture) {
+                            dot.setFill(Color.TRANSPARENT);
+                            dot.setStroke(Color.rgb(80, 220, 80, 0.75));
+                            dot.setStrokeWidth(4);
+                        } else {
+                            dot.setFill(Color.rgb(80, 220, 80, 0.55));
+                        }
+                        dot.setMouseTransparent(true);
+                        dot.setId("legalDot");
+                        cells[rc[0]][rc[1]].getChildren().add(dot);
+                    }
                 }
             }
             return;
@@ -404,35 +411,76 @@ public class chessboard extends Application {
             return;
         }
 
+        // Save position + piece info BEFORE applying the move
+        int fromR = selectedPiece.getRow();
+        int fromC = selectedPiece.getCol();
+        piecetype movingType  = selectedPiece.getType();
+        gamelogic.Color movingColor = selectedPiece.getColor();
+
         String target = piece.rcToAlgebraic(r, c);
         boolean moved = selectedPiece.move(target);
-
         selectedPiece = null;
 
         if (moved) {
-            refreshBoardFromModel();
+            Node animNode = PieceRenderer.createPiece(movingType, movingColor, SIZE);
+            animatePieceMove(fromR, fromC, r, c, animNode, () -> {
+                refreshBoardFromModel();
 
-            gamelogic.Color opponent = (turnManager.getCurrentTurn() == gamelogic.Color.WHITE)
-                    ? gamelogic.Color.BLACK : gamelogic.Color.WHITE;
+                gamelogic.Color opponent = (turnManager.getCurrentTurn() == gamelogic.Color.WHITE)
+                        ? gamelogic.Color.BLACK : gamelogic.Color.WHITE;
 
-            if (Board.isCheckmate(opponent)) {
-                showAlert(turnManager.getCurrentTurn() + " wins by checkmate!");
-                board.setDisable(true);
-                return;
-            }
+                if (Board.isCheckmate(opponent)) {
+                    ChessDialog.showInfo(stageRef,
+                            "Checkmate!",
+                            turnManager.getCurrentTurn() + " wins by checkmate!");
+                    board.setDisable(true);
+                    return;
+                }
 
-            turnManager.endTurn();
+                turnManager.endTurn();
+                try {
+                    moveManager.recordAfterMove(new Snapshot(turnManager.getCurrentTurn()));
+                    if (snapshotSaver == null) snapshotSaver = new Snapshot(turnManager.getCurrentTurn());
+                    snapshotSaver.savesnapshopt(Board.getBoard(), turnManager.getCurrentTurn());
+                } catch (Exception ignored) {}
 
-            try {
-                moveManager.recordAfterMove(new Snapshot(turnManager.getCurrentTurn()));
-                if (snapshotSaver == null) snapshotSaver = new Snapshot(turnManager.getCurrentTurn());
-                snapshotSaver.savesnapshopt(Board.getBoard(), turnManager.getCurrentTurn());
-            } catch (Exception ignored) {
-                System.out.println(ignored.getMessage());
-            }
-
-            updateTurnText();
+                updateTurnText();
+            });
         }
+    }
+
+    // ================= ANIMATION =================
+    private void animatePieceMove(int fromR, int fromC, int toR, int toC,
+                                   Node pieceNode, Runnable onComplete) {
+        if (pieceNode == null) { onComplete.run(); return; }
+        isAnimating = true;
+
+        // Clear piece from source cell visually
+        cells[fromR][fromC].getChildren().removeIf(n -> "pieceNode".equals(n.getId()));
+
+        Bounds fromB    = cells[fromR][fromC].localToScene(cells[fromR][fromC].getBoundsInLocal());
+        Bounds toB      = cells[toR][toC].localToScene(cells[toR][toC].getBoundsInLocal());
+        Bounds overlayB = animationLayer.localToScene(animationLayer.getBoundsInLocal());
+
+        double startX = fromB.getMinX() - overlayB.getMinX();
+        double startY = fromB.getMinY() - overlayB.getMinY();
+        double endX   = toB.getMinX()   - overlayB.getMinX();
+        double endY   = toB.getMinY()   - overlayB.getMinY();
+
+        pieceNode.setLayoutX(startX);
+        pieceNode.setLayoutY(startY);
+        animationLayer.getChildren().add(pieceNode);
+
+        TranslateTransition tt = new TranslateTransition(Duration.millis(280), pieceNode);
+        tt.setByX(endX - startX);
+        tt.setByY(endY - startY);
+        tt.setInterpolator(Interpolator.EASE_BOTH);
+        tt.setOnFinished(e -> {
+            animationLayer.getChildren().remove(pieceNode);
+            isAnimating = false;
+            onComplete.run();
+        });
+        tt.play();
     }
 
     // ================= UNDO / REDO =================
@@ -471,16 +519,14 @@ public class chessboard extends Application {
 
     private void resetColors() {
         for (int r = 0; r < 8; r++)
-            for (int c = 0; c < 8; c++)
-                cellRects[r][c].setFill((r + c) % 2 == 0 ? Color.LIGHTBLUE : Color.BEIGE);
+            for (int c = 0; c < 8; c++) {
+                cellRects[r][c].setFill((r + c) % 2 == 0 ? LIGHT_SQ : DARK_SQ);
+                cells[r][c].getChildren().removeIf(n -> "legalDot".equals(n.getId()));
+            }
     }
 
     private void showAlert(String msg) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Chess");
-        alert.setHeaderText(null);
-        alert.setContentText(msg);
-        alert.showAndWait();
+        ChessDialog.showInfo(stageRef, "Chess", msg);
     }
 
     public static void main(String[] args) {

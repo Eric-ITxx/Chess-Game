@@ -22,3 +22,9 @@ users.txt
 
 # Zip archives
 *.zip
+
+# Stockfish binary (>100MB — exceeds GitHub limit, download separately)
+src/main/resources/stockfish.exe
+
+# Claude memory
+.claude/
