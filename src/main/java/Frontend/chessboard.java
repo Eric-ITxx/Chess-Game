@@ -72,6 +72,9 @@ public class chessboard extends Application {
     private Pane animationLayer;
     private boolean isAnimating = false;
 
+    // Clock
+    private ChessClock clock;
+
 
     // Images
     private Image whitePawn, whiteRook, whiteKnight, whiteBishop, whiteQueen, whiteKing;
@@ -88,7 +91,7 @@ public class chessboard extends Application {
         turnManager = new Playerturn(gamelogic.Color.WHITE);
 
         askLoadOrNewGame();
-
+        askTimeControl();
 
         moveManager = new MoveManager();
         try {
@@ -124,7 +127,31 @@ public class chessboard extends Application {
 
         stage.show();
 
+        // Start clock after UI is shown
+        if (clock != null) clock.startWhite();
+
         updateTurnText();
+    }
+
+    // ================= TIME CONTROL =================
+    private long askTimeControl() {
+        String choice = ChessDialog.showConfirm(stageRef,
+                "Time Control",
+                "Choose a time control for this game:",
+                "Bullet  1 min", "Rapid  10 min", "Classical  30 min", "No Limit");
+        long secs = switch (choice) {
+            case "Bullet  1 min"     -> 60L;
+            case "Rapid  10 min"     -> 600L;
+            case "Classical  30 min" -> 1800L;
+            default                  -> 0L;
+        };
+        if (secs > 0) {
+            clock = new ChessClock(secs,
+                () -> { ChessDialog.showInfo(stageRef, "Time's Up!", "Black wins — White ran out of time!"); board.setDisable(true); },
+                () -> { ChessDialog.showInfo(stageRef, "Time's Up!", "White wins — Black ran out of time!"); board.setDisable(true); }
+            );
+        }
+        return secs;
     }
 
     // ================= START MENU =================
@@ -202,6 +229,14 @@ public class chessboard extends Application {
         turnText.setFill(Color.WHITE);
         turnText.setStyle("-fx-font-size: 20; -fx-font-weight: bold;");
 
+        // Clock labels (placeholders if no clock selected)
+        Text blackClock = (clock != null) ? clock.getBlackLabel() : new Text("Black  --:--");
+        Text whiteClock = (clock != null) ? clock.getWhiteLabel() : new Text("White  --:--");
+        blackClock.setFill(Color.WHITE);
+        whiteClock.setFill(Color.WHITE);
+        blackClock.setStyle("-fx-font-size:18; -fx-font-weight:bold;");
+        whiteClock.setStyle("-fx-font-size:18; -fx-font-weight:bold;");
+
         Button pause  = styledButton("Pause");
         Button resume = styledButton("Resume");
         Button undo   = styledButton("Undo");
@@ -216,11 +251,13 @@ public class chessboard extends Application {
         pause.setOnAction(e -> {
             paused = true;
             pauseOverlay.setVisible(true);
+            if (clock != null) clock.pause();
         });
 
         resume.setOnAction(e -> {
             paused = false;
             pauseOverlay.setVisible(false);
+            if (clock != null) clock.resume();
         });
 
         undo.setOnAction(e -> doUndo());
@@ -242,7 +279,7 @@ public class chessboard extends Application {
         });
 
 
-        back.setOnAction(e -> openDashboard());
+        back.setOnAction(e -> { if (clock != null) clock.stop(); openDashboard(); });
 
 
         exit.setOnAction(e -> {
@@ -250,7 +287,9 @@ public class chessboard extends Application {
         });
 
         VBox box = new VBox(12,
+                blackClock,
                 turnText,
+                whiteClock,
                 pause, resume,
                 undo, redo,
                 save,
@@ -430,6 +469,7 @@ public class chessboard extends Application {
                         ? gamelogic.Color.BLACK : gamelogic.Color.WHITE;
 
                 if (Board.isCheckmate(opponent)) {
+                    if (clock != null) clock.stop();
                     ChessDialog.showInfo(stageRef,
                             "Checkmate!",
                             turnManager.getCurrentTurn() + " wins by checkmate!");
@@ -444,6 +484,10 @@ public class chessboard extends Application {
                     snapshotSaver.savesnapshopt(Board.getBoard(), turnManager.getCurrentTurn());
                 } catch (Exception ignored) {}
 
+                if (clock != null) {
+                    if (turnManager.getCurrentTurn() == gamelogic.Color.WHITE) clock.startWhite();
+                    else clock.startBlack();
+                }
                 updateTurnText();
             });
         }

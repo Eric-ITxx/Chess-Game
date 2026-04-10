@@ -68,6 +68,9 @@ public class chessboardAI {
     // ── Animation ──
     private Pane         animationLayer;
 
+    // ── Clock ──
+    private ChessClock   clock;
+
     // ── Selection ──
     private piece        selectedPiece = null;
 
@@ -85,8 +88,9 @@ public class chessboardAI {
     public void start(Stage stage) {
         this.stageRef = stage;
 
-        // Ask difficulty before starting
+        // Ask difficulty and time control before starting
         thinkTimeMs = askDifficulty();
+        askTimeControl();
 
         gameBoard    = new Board();
         whitePlayer  = new Player(Color.WHITE, username);
@@ -131,7 +135,29 @@ public class chessboardAI {
         stage.setScene(scene);
         stage.show();
 
+        if (clock != null) clock.startWhite();
         updateTurnText();
+    }
+
+    // ─────────────────────────────── Time control ───────────────────────────────
+
+    private void askTimeControl() {
+        String choice = ChessDialog.showConfirm(stageRef,
+                "Time Control",
+                "Choose a time control for this game:",
+                "Bullet  1 min", "Rapid  10 min", "Classical  30 min", "No Limit");
+        long secs = switch (choice) {
+            case "Bullet  1 min"     -> 60L;
+            case "Rapid  10 min"     -> 600L;
+            case "Classical  30 min" -> 1800L;
+            default                  -> 0L;
+        };
+        if (secs > 0) {
+            clock = new ChessClock(secs,
+                () -> { ChessDialog.showInfo(stageRef, "Time's Up!", "Stockfish wins — White ran out of time!"); boardGrid.setDisable(true); },
+                () -> { ChessDialog.showInfo(stageRef, "Time's Up!", "You win — Stockfish ran out of time!");  boardGrid.setDisable(true); }
+            );
+        }
     }
 
     // ─────────────────────────────── Difficulty ───────────────────────────────
@@ -205,6 +231,13 @@ public class chessboardAI {
         statusText.setFill(javafx.scene.paint.Color.YELLOW);
         statusText.setStyle("-fx-font-size: 14; -fx-font-weight: bold;");
 
+        Text blackClock = (clock != null) ? clock.getBlackLabel() : new Text("Black  --:--");
+        Text whiteClock = (clock != null) ? clock.getWhiteLabel() : new Text("White  --:--");
+        blackClock.setFill(javafx.scene.paint.Color.WHITE);
+        whiteClock.setFill(javafx.scene.paint.Color.WHITE);
+        blackClock.setStyle("-fx-font-size:18; -fx-font-weight:bold;");
+        whiteClock.setStyle("-fx-font-size:18; -fx-font-weight:bold;");
+
         Button pause  = styledButton("Pause");
         Button resume = styledButton("Resume");
         Button undo   = styledButton("Undo");
@@ -213,8 +246,8 @@ public class chessboardAI {
         Button back   = styledButton("Back");
         Button exit   = styledButton("Exit");
 
-        pause .setOnAction(e -> { paused = true;  pauseOverlay.setVisible(true);  });
-        resume.setOnAction(e -> { paused = false; pauseOverlay.setVisible(false); });
+        pause .setOnAction(e -> { paused = true;  pauseOverlay.setVisible(true);  if (clock != null) clock.pause();  });
+        resume.setOnAction(e -> { paused = false; pauseOverlay.setVisible(false); if (clock != null) clock.resume(); });
         undo  .setOnAction(e -> doUndo());
         redo  .setOnAction(e -> doRedo());
         save  .setOnAction(e -> {
@@ -232,7 +265,7 @@ public class chessboardAI {
             if (stageRef != null) stageRef.close();
         });
 
-        VBox box = new VBox(12, turnText, statusText,
+        VBox box = new VBox(12, blackClock, turnText, whiteClock, statusText,
                 pause, resume, undo, redo, save, back, exit);
         box.setAlignment(Pos.CENTER);
         box.setPadding(new Insets(6));
@@ -384,12 +417,14 @@ public class chessboardAI {
                 aiThinking = false;
 
                 if (Board.isCheckmate(Color.BLACK)) {
+                    if (clock != null) clock.stop();
                     ChessDialog.showInfo(stageRef, "Checkmate!", "You win! Stockfish is defeated.");
                     boardGrid.setDisable(true);
                     return;
                 }
 
                 turnManager.endTurn();
+                if (clock != null) clock.startBlack();
                 try {
                     moveManager.recordAfterMove(new Snapshot(Color.BLACK));
                     if (snapshotSaver == null) snapshotSaver = new Snapshot(Color.BLACK);
@@ -460,12 +495,14 @@ public class chessboardAI {
             aiThinking = false;
 
             if (Board.isCheckmate(Color.WHITE)) {
+                if (clock != null) clock.stop();
                 ChessDialog.showInfo(stageRef, "Checkmate!", "Stockfish wins. Better luck next time!");
                 boardGrid.setDisable(true);
                 return;
             }
 
             turnManager.endTurn();
+            if (clock != null) clock.startWhite();
             try {
                 moveManager.recordAfterMove(new Snapshot(Color.WHITE));
                 if (snapshotSaver == null) snapshotSaver = new Snapshot(Color.WHITE);
@@ -568,6 +605,7 @@ public class chessboardAI {
     }
 
     private void shutdownStockfish() {
+        if (clock != null) clock.stop();
         if (stockfish != null) {
             new Thread(() -> stockfish.stop()).start();
         }
