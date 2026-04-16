@@ -17,17 +17,24 @@ public class StockfishEngine {
     private BufferedReader reader;
     private BufferedWriter writer;
 
-    private static final String STOCKFISH_PATH = "src/main/resources/stockfish.exe";
-
     // ─────────────────────── Lifecycle ───────────────────────
+
+    private static File extractStockfish() throws IOException {
+        try (InputStream in = StockfishEngine.class.getResourceAsStream("/stockfish.exe")) {
+            if (in == null) throw new IOException("stockfish.exe not found in resources");
+            File temp = File.createTempFile("stockfish", ".exe");
+            temp.deleteOnExit();
+            try (FileOutputStream out = new FileOutputStream(temp)) {
+                in.transferTo(out);
+            }
+            temp.setExecutable(true);
+            return temp;
+        }
+    }
 
     public boolean start() {
         try {
-            File exe = new File(STOCKFISH_PATH);
-            if (!exe.exists()) {
-                System.err.println("Stockfish not found at: " + exe.getAbsolutePath());
-                return false;
-            }
+            File exe = extractStockfish();
             process = new ProcessBuilder(exe.getAbsolutePath())
                     .redirectErrorStream(true)
                     .start();

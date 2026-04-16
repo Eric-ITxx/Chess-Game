@@ -10,27 +10,27 @@ public class SoundManager {
     // ---------------- PUBLIC GAME SOUNDS ----------------
 
     public void playMove() {
-        playOnce("file:src/main/resources/sounds/move.mp3");
+        playOnce("/sounds/move.mp3");
     }
 
     public void playCapture() {
-        playOnce("file:src/main/resources/sounds/piece captured.mp3");
+        playOnce("/sounds/piece captured.mp3");
     }
 
     public void playCheck() {
-        playOnce("file:src/main/resources/sounds/chek to king.mp3");
+        playOnce("/sounds/chek to king.mp3");
     }
 
     public void playCheckMate() {
-        playOnce("file:src/main/resources/sounds/checkmate.mp3");
+        playOnce("/sounds/checkmate.mp3");
     }
 
     public void playClick() {
-        playOnce("file:src/main/resources/sounds/piece clicked.mp3");
+        playOnce("/sounds/piece clicked.mp3");
     }
 
     public void startBackgroundMusic() {
-        playLoop("file:src/main/resources/sounds/bg.mp3", 1.0);
+        playLoop("/sounds/bg.mp3", 1.0);
     }
 
     public void stopBackgroundMusic() {
@@ -49,20 +49,28 @@ public class SoundManager {
 
     // ---------------- INTERNAL LOGIC ----------------
 
-    private void playOnce(String filePath) {
-        Media media = new Media(filePath);
-        MediaPlayer player = new MediaPlayer(media);
-        player.setVolume(1.0);
-        player.setOnEndOfMedia(player::dispose);
-        player.play();
+    private void playOnce(String classpathPath) {
+        try {
+            var url = getClass().getResource(classpathPath);
+            if (url == null) return;
+            Media media = new Media(url.toExternalForm());
+            MediaPlayer player = new MediaPlayer(media);
+            player.setVolume(1.0);
+            player.setOnEndOfMedia(player::dispose);
+            player.play();
+        } catch (Exception ignored) {}
     }
 
-    private void playLoop(String filePath, double volume) {
+    private void playLoop(String classpathPath, double volume) {
         stopBackgroundMusic();
-        Media media = new Media(filePath);
-        backgroundPlayer = new MediaPlayer(media);
-        backgroundPlayer.setCycleCount(MediaPlayer.INDEFINITE);
-        backgroundPlayer.setVolume(volume);
-        backgroundPlayer.play();
+        try {
+            var url = getClass().getResource(classpathPath);
+            if (url == null) return;
+            Media media = new Media(url.toExternalForm());
+            backgroundPlayer = new MediaPlayer(media);
+            backgroundPlayer.setCycleCount(MediaPlayer.INDEFINITE);
+            backgroundPlayer.setVolume(volume);
+            backgroundPlayer.play();
+        } catch (Exception ignored) {}
     }
 }

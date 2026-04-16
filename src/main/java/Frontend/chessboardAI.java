@@ -33,7 +33,7 @@ public class chessboardAI {
     private static final int SIZE       = 80;
     private static final int BOARD_SIZE = 8;
     private static final String FILES   = "abcdefgh";
-    private static final String BG_PATH = "file:src/main/resources/Dash.png";
+    private static final String BG_PATH = chessboardAI.class.getResource("/Dash.png").toExternalForm();
 
     // Board color scheme — silverish black
     private static final javafx.scene.paint.Color LIGHT_SQ  = javafx.scene.paint.Color.rgb(180, 188, 196);
@@ -300,22 +300,25 @@ public class chessboardAI {
     // ─────────────────────────────── Images ───────────────────────────────
 
     private void loadPieceImages() {
-        whitePawn   = img("file:src/main/resources/Pawn.jpeg");
-        whiteRook   = img("file:src/main/resources/white rook.jpeg");
-        whiteKnight = img("file:src/main/resources/white horse.jpeg");
-        whiteBishop = img("file:src/main/resources/white bishop.jpeg");
-        whiteQueen  = img("file:src/main/resources/white queen.jpeg");
-        whiteKing   = img("file:src/main/resources/white king.jpeg");
-        blackPawn   = img("file:src/main/resources/black pawn.jpeg");
-        blackRook   = img("file:src/main/resources/black rook.jpeg");
-        blackKnight = img("file:src/main/resources/black horse.jpeg");
-        blackBishop = img("file:src/main/resources/black bishop.jpeg");
-        blackQueen  = img("file:src/main/resources/black queen.jpeg");
-        blackKing   = img("file:src/main/resources/black king.jpeg");
+        whitePawn   = img("/Pawn.jpeg");
+        whiteRook   = img("/white rook.jpeg");
+        whiteKnight = img("/white horse.jpeg");
+        whiteBishop = img("/white bishop.jpeg");
+        whiteQueen  = img("/white queen.jpeg");
+        whiteKing   = img("/white king.jpeg");
+        blackPawn   = img("/black pawn.jpeg");
+        blackRook   = img("/black rook.jpeg");
+        blackKnight = img("/black horse.jpeg");
+        blackBishop = img("/black bishop.jpeg");
+        blackQueen  = img("/black queen.jpeg");
+        blackKing   = img("/black king.jpeg");
     }
 
-    private Image img(String path) {
-        try { return new Image(path); } catch (Exception e) { return null; }
+    private Image img(String classpathPath) {
+        try {
+            var in = getClass().getResourceAsStream(classpathPath);
+            return in != null ? new Image(in) : null;
+        } catch (Exception e) { return null; }
     }
 
     private Image getImageForPiece(piece p) {

@@ -17,7 +17,7 @@ import makingstats.Players;
 public class ProfileView extends StackPane {
 
 
-    private static final String BACKGROUND_IMAGE_PATH = "file:src/main/resources/Dash.png";
+    private static final String BACKGROUND_IMAGE_PATH = ProfileView.class.getResource("/Dash.png").toExternalForm();
 
     private String username;
     private int rating;

@@ -297,24 +297,25 @@ public class chesslan extends Application {
     }
 
     private void loadPieceImages() {
-        whitePawn   = loadPieceImages("file:src/main/resources/Pawn.jpeg");
-        whiteRook   = loadPieceImages("file:src/main/resources/white rook.jpeg");
-        whiteKnight = loadPieceImages("file:src/main/resources/white horse.jpeg");
-        whiteBishop = loadPieceImages("file:src/main/resources/white bishop.jpeg");
-        whiteQueen  = loadPieceImages("file:src/main/resources/white queen.jpeg");
-        whiteKing   = loadPieceImages("file:src/main/resources/white king.jpeg");
+        whitePawn   = loadPieceImages("/Pawn.jpeg");
+        whiteRook   = loadPieceImages("/white rook.jpeg");
+        whiteKnight = loadPieceImages("/white horse.jpeg");
+        whiteBishop = loadPieceImages("/white bishop.jpeg");
+        whiteQueen  = loadPieceImages("/white queen.jpeg");
+        whiteKing   = loadPieceImages("/white king.jpeg");
 
-        blackPawn   = loadPieceImages("file:src/main/resources/black pawn.jpeg");
-        blackRook   = loadPieceImages("file:src/main/resources/black rook.jpeg");
-        blackKnight = loadPieceImages("file:src/main/resources/black horse.jpeg");
-        blackBishop = loadPieceImages("file:src/main/resources/black bishop.jpeg");
-        blackQueen  = loadPieceImages("file:src/main/resources/black queen.jpeg");
-        blackKing   = loadPieceImages("file:src/main/resources/black king.jpeg");
+        blackPawn   = loadPieceImages("/black pawn.jpeg");
+        blackRook   = loadPieceImages("/black rook.jpeg");
+        blackKnight = loadPieceImages("/black horse.jpeg");
+        blackBishop = loadPieceImages("/black bishop.jpeg");
+        blackQueen  = loadPieceImages("/black queen.jpeg");
+        blackKing   = loadPieceImages("/black king.jpeg");
     }
 
-    private Image loadPieceImages(String filePath) {
+    private Image loadPieceImages(String classpathPath) {
         try {
-            return new Image(filePath);
+            var in = getClass().getResourceAsStream(classpathPath);
+            return in != null ? new Image(in) : null;
         } catch (Exception e) {
             return null;
         }

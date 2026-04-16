@@ -35,7 +35,7 @@ public class chessboard extends Application {
     private static final Color SEL_COLOR = Color.rgb(255, 210, 30, 0.9); // gold selection
     private static final String FILES = "abcdefgh";
 
-    private static final String BG_PATH = "file:src/main/resources/Dash.png";
+    private static final String BG_PATH = chessboard.class.getResource("/Dash.png").toExternalForm();
 
     // ---------- Backend ----------
     private Board gameBoard;
@@ -343,24 +343,25 @@ public class chessboard extends Application {
 
     // ================= IMAGES =================
     private void loadPieceImages() {
-        whitePawn   = loadFileImage("file:src/main/resources/Pawn.jpeg");
-        whiteRook   = loadFileImage("file:src/main/resources/white rook.jpeg");
-        whiteKnight = loadFileImage("file:src/main/resources/white horse.jpeg");
-        whiteBishop = loadFileImage("file:src/main/resources/white bishop.jpeg");
-        whiteQueen  = loadFileImage("file:src/main/resources/white queen.jpeg");
-        whiteKing   = loadFileImage("file:src/main/resources/white king.jpeg");
+        whitePawn   = loadFileImage("/Pawn.jpeg");
+        whiteRook   = loadFileImage("/white rook.jpeg");
+        whiteKnight = loadFileImage("/white horse.jpeg");
+        whiteBishop = loadFileImage("/white bishop.jpeg");
+        whiteQueen  = loadFileImage("/white queen.jpeg");
+        whiteKing   = loadFileImage("/white king.jpeg");
 
-        blackPawn   = loadFileImage("file:src/main/resources/black pawn.jpeg");
-        blackRook   = loadFileImage("file:src/main/resources/black rook.jpeg");
-        blackKnight = loadFileImage("file:src/main/resources/black horse.jpeg");
-        blackBishop = loadFileImage("file:src/main/resources/black bishop.jpeg");
-        blackQueen  = loadFileImage("file:src/main/resources/black queen.jpeg");
-        blackKing   = loadFileImage("file:src/main/resources/black king.jpeg");
+        blackPawn   = loadFileImage("/black pawn.jpeg");
+        blackRook   = loadFileImage("/black rook.jpeg");
+        blackKnight = loadFileImage("/black horse.jpeg");
+        blackBishop = loadFileImage("/black bishop.jpeg");
+        blackQueen  = loadFileImage("/black queen.jpeg");
+        blackKing   = loadFileImage("/black king.jpeg");
     }
 
-    private Image loadFileImage(String filePath) {
+    private Image loadFileImage(String classpathPath) {
         try {
-            return new Image(filePath);
+            var in = getClass().getResourceAsStream(classpathPath);
+            return in != null ? new Image(in) : null;
         } catch (Exception e) {
             return null;
         }

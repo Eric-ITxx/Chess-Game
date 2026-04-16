@@ -10,8 +10,7 @@ import javafx.stage.Stage;
 
 public class SettingsView extends BorderPane {
 
-    // Path to your background image
-    private static final String BACKGROUND_IMAGE_PATH = "file:src/main/resources/Dash.png";
+    private static final String BACKGROUND_IMAGE_PATH = SettingsView.class.getResource("/Dash.png").toExternalForm();
 
     private String username;
     private int rating;

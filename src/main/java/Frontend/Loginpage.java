@@ -16,8 +16,7 @@ public class Loginpage extends Application {
     // File where users will be stored
     private static final Path USERS_FILE = Paths.get("users.txt");
 
-    // Path to your background image
-    private static final String BACKGROUND_IMAGE_PATH = "file:src/main/resources/Dash.png";
+    private static final String BACKGROUND_IMAGE_PATH = Loginpage.class.getResource("/Dash.png").toExternalForm();
 
     private TextField usernameField;
     private TextField emailField;
