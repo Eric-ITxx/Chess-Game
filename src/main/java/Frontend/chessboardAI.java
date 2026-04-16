@@ -6,7 +6,6 @@ import gamelogic.Color;
 import javafx.animation.Interpolator;
 import javafx.animation.TranslateTransition;
 import javafx.application.Platform;
-import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -23,6 +22,7 @@ import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -35,61 +35,74 @@ public class chessboardAI {
     private static final String FILES   = "abcdefgh";
     private static final String BG_PATH = chessboardAI.class.getResource("/Dash.png").toExternalForm();
 
-    // Board color scheme — silverish black
-    private static final javafx.scene.paint.Color LIGHT_SQ  = javafx.scene.paint.Color.rgb(180, 188, 196);
-    private static final javafx.scene.paint.Color DARK_SQ   = javafx.scene.paint.Color.rgb(34, 34, 34);
-    private static final javafx.scene.paint.Color SEL_COLOR = javafx.scene.paint.Color.rgb(255, 210, 30, 0.9);
+    private static final javafx.scene.paint.Color SEL_COLOR       = javafx.scene.paint.Color.rgb(255, 210, 30, 0.9);
+    private static final javafx.scene.paint.Color LAST_MOVE_COLOR = javafx.scene.paint.Color.rgb(255, 220, 50, 0.35);
 
-    // Stockfish think time per difficulty
     private static final int EASY_MS   = 150;
     private static final int MEDIUM_MS = 1000;
     private static final int HARD_MS   = 4000;
 
     // ── Backend ──
-    private Board        gameBoard;
-    private Player       whitePlayer;
-    private Player       blackPlayer;
-    private Playerturn   turnManager;
-    private MoveManager  moveManager;
-    private Snapshot     snapshotSaver;
+    private Board          gameBoard;
+    private Player         whitePlayer;
+    private Player         blackPlayer;
+    private Playerturn     turnManager;
+    private MoveManager    moveManager;
+    private Snapshot       snapshotSaver;
     private StockfishEngine stockfish;
-    private int          thinkTimeMs = MEDIUM_MS;
+    private int            thinkTimeMs = MEDIUM_MS;
 
     // ── UI ──
-    private GridPane     boardGrid;
+    private GridPane       boardGrid;
     private StackPane[][]  cells     = new StackPane[BOARD_SIZE][BOARD_SIZE];
     private Rectangle[][]  cellRects = new Rectangle[BOARD_SIZE][BOARD_SIZE];
-    private StackPane    pauseOverlay;
-    private Text         turnText;
-    private Text         statusText;
-    private boolean      paused     = false;
-    private boolean      aiThinking = false;
+    private StackPane      pauseOverlay;
+    private Text           turnText;
+    private Text           statusText;
+    private boolean        paused    = false;
+    private boolean        aiThinking = false;
 
     // ── Animation ──
-    private Pane         animationLayer;
+    private Pane animationLayer;
 
     // ── Clock ──
-    private ChessClock   clock;
+    private ChessClock clock;
 
     // ── Selection ──
-    private piece        selectedPiece = null;
+    private piece selectedPiece = null;
 
     // ── Stage / user ──
-    private Stage        stageRef;
-    private String       username = "Player";
-    private int          rating   = 0;
+    private Stage  stageRef;
+    private String username = "Player";
+    private int    rating   = 0;
 
-    // ── Images ──
+    // ── Last move highlight ──
+    private int lastFromR = -1, lastFromC = -1, lastToR = -1, lastToC = -1;
+
+    // ── Move history ──
+    private ListView<String> moveHistoryView;
+    private int halfMoveCount = 0;
+
+    // ── Captured pieces ──
+    private final List<piecetype> capturedByWhite = new ArrayList<>(); // black pieces white captured
+    private final List<piecetype> capturedByBlack = new ArrayList<>(); // white pieces black captured
+    private Label capturedTopLabel;
+    private Label capturedBottomLabel;
+
+    // ── Images (kept for compatibility) ──
     private Image whitePawn, whiteRook, whiteKnight, whiteBishop, whiteQueen, whiteKing;
     private Image blackPawn, blackRook, blackKnight, blackBishop, blackQueen, blackKing;
+
+    // Public setters
+    public void setUsername(String u) { this.username = u; }
+    public void setRating(int r)      { this.rating = r;   }
 
     // ─────────────────────────────── Entry point ───────────────────────────────
 
     public void start(Stage stage) {
         this.stageRef = stage;
 
-        // Ask difficulty and time control before starting
-        thinkTimeMs = askDifficulty();
+        thinkTimeMs  = askDifficulty();
         askTimeControl();
 
         gameBoard    = new Board();
@@ -97,32 +110,36 @@ public class chessboardAI {
         blackPlayer  = new Player(Color.BLACK, "Stockfish 18");
         turnManager  = new Playerturn(Color.WHITE);
         moveManager  = new MoveManager();
-
         try { moveManager.recordInitial(new Snapshot(Color.WHITE)); } catch (Exception ignored) {}
 
-        // Start Stockfish engine on a background thread so the UI doesn't freeze
         new Thread(() -> {
             stockfish = new StockfishEngine();
             boolean ok = stockfish.start();
-            if (!ok) {
-                Platform.runLater(() -> showAlert(
-                    "Stockfish not found!\nExpected: src/main/resources/stockfish.exe\n" +
-                    "Download it from stockfishchess.org and place it there."));
-            }
+            if (!ok) Platform.runLater(() -> showAlert(
+                "Stockfish not found!\nExpected: src/main/resources/stockfish.exe\n" +
+                "Download it from stockfishchess.org and place it there."));
         }).start();
 
         buildBoard();
         loadPieceImages();
         refreshBoardFromModel();
 
-        pauseOverlay = buildPauseOverlay();
-        VBox buttons = buildRightButtons();
-
+        pauseOverlay   = buildPauseOverlay();
+        VBox buttons   = buildRightButtons();
         animationLayer = new Pane();
         animationLayer.setMouseTransparent(true);
 
+        capturedTopLabel    = buildCapturedLabel();
+        capturedBottomLabel = buildCapturedLabel();
+
+        VBox boardArea = new VBox(4,
+                capturedTopLabel,
+                new StackPane(boardGrid, pauseOverlay, animationLayer),
+                capturedBottomLabel);
+        boardArea.setAlignment(Pos.CENTER);
+
         BorderPane root = new BorderPane();
-        root.setCenter(new StackPane(boardGrid, pauseOverlay, animationLayer));
+        root.setCenter(boardArea);
         root.setRight(buttons);
         root.setStyle(
             "-fx-background-image: url('" + BG_PATH + "');" +
@@ -143,19 +160,18 @@ public class chessboardAI {
 
     private void askTimeControl() {
         String choice = ChessDialog.showConfirm(stageRef,
-                "Time Control",
-                "Choose a time control for this game:",
+                "Time Control", "Choose a time control:",
                 "Bullet  1 min", "Rapid  10 min", "Classical  30 min", "No Limit");
         long secs = switch (choice) {
             case "Bullet  1 min"     -> 60L;
             case "Rapid  10 min"     -> 600L;
             case "Classical  30 min" -> 1800L;
-            default                  -> 0L;
+            default -> 0L;
         };
         if (secs > 0) {
             clock = new ChessClock(secs,
-                () -> { ChessDialog.showInfo(stageRef, "Time's Up!", "Stockfish wins — White ran out of time!"); boardGrid.setDisable(true); },
-                () -> { ChessDialog.showInfo(stageRef, "Time's Up!", "You win — Stockfish ran out of time!");  boardGrid.setDisable(true); }
+                () -> { boardGrid.setDisable(true); ChessDialog.showInfo(stageRef, "Time's Up!", "Stockfish wins — White ran out of time!"); },
+                () -> { boardGrid.setDisable(true); ChessDialog.showInfo(stageRef, "Time's Up!", "You win — Stockfish ran out of time!"); }
             );
         }
     }
@@ -164,8 +180,7 @@ public class chessboardAI {
 
     private int askDifficulty() {
         String choice = ChessDialog.showConfirm(stageRef,
-                "Choose Difficulty",
-                "How hard do you want Stockfish to play?",
+                "Choose Difficulty", "How hard do you want Stockfish to play?",
                 "Easy", "Medium", "Hard");
         return switch (choice) {
             case "Easy" -> EASY_MS;
@@ -182,34 +197,24 @@ public class chessboardAI {
         boardGrid.setAlignment(Pos.CENTER);
 
         Font coordFont = Font.font(14);
-
-        // File labels (a-h)
         for (int c = 0; c < BOARD_SIZE; c++) {
             Label lbl = new Label(String.valueOf(FILES.charAt(c)));
-            lbl.setMinWidth(SIZE);
-            lbl.setAlignment(Pos.CENTER);
-            lbl.setTextFill(Paint.valueOf("white"));
-            lbl.setFont(coordFont);
+            lbl.setMinWidth(SIZE); lbl.setAlignment(Pos.CENTER);
+            lbl.setTextFill(Paint.valueOf("white")); lbl.setFont(coordFont);
             lbl.setTranslateY(-8);
             boardGrid.add(lbl, c + 1, 0);
         }
-
-        // Rank labels (8-1)
         for (int r = 0; r < BOARD_SIZE; r++) {
             Label lbl = new Label(String.valueOf(8 - r));
-            lbl.setMinHeight(SIZE);
-            lbl.setAlignment(Pos.CENTER);
-            lbl.setTextFill(Paint.valueOf("white"));
-            lbl.setFont(coordFont);
+            lbl.setMinHeight(SIZE); lbl.setAlignment(Pos.CENTER);
+            lbl.setTextFill(Paint.valueOf("white")); lbl.setFont(coordFont);
             lbl.setTranslateY(-6);
             boardGrid.add(lbl, 0, r + 1);
         }
-
-        // Cells
         for (int r = 0; r < BOARD_SIZE; r++) {
             for (int c = 0; c < BOARD_SIZE; c++) {
                 Rectangle rect = new Rectangle(SIZE, SIZE);
-                rect.setFill((r + c) % 2 == 0 ? LIGHT_SQ : DARK_SQ);
+                rect.setFill((r + c) % 2 == 0 ? GameSettings.getLightSq() : GameSettings.getDarkSq());
                 rect.setStroke(javafx.scene.paint.Color.rgb(15, 15, 15));
 
                 StackPane cell = new StackPane(rect);
@@ -223,6 +228,14 @@ public class chessboardAI {
         }
     }
 
+    private Label buildCapturedLabel() {
+        Label l = new Label();
+        l.setStyle("-fx-font-size: 22; -fx-text-fill: white; -fx-padding: 2 20;");
+        return l;
+    }
+
+    // ─────────────────────────────── Right panel ───────────────────────────────
+
     private VBox buildRightButtons() {
         turnText   = new Text();
         statusText = new Text("Your turn (White)");
@@ -233,10 +246,20 @@ public class chessboardAI {
 
         Text blackClock = (clock != null) ? clock.getBlackLabel() : new Text("Black  --:--");
         Text whiteClock = (clock != null) ? clock.getWhiteLabel() : new Text("White  --:--");
-        blackClock.setFill(javafx.scene.paint.Color.WHITE);
-        whiteClock.setFill(javafx.scene.paint.Color.WHITE);
-        blackClock.setStyle("-fx-font-size:18; -fx-font-weight:bold;");
-        whiteClock.setStyle("-fx-font-size:18; -fx-font-weight:bold;");
+        blackClock.setFill(javafx.scene.paint.Color.WHITE); blackClock.setStyle("-fx-font-size:18; -fx-font-weight:bold;");
+        whiteClock.setFill(javafx.scene.paint.Color.WHITE); whiteClock.setStyle("-fx-font-size:18; -fx-font-weight:bold;");
+
+        moveHistoryView = new ListView<>();
+        moveHistoryView.setPrefHeight(150);
+        moveHistoryView.setPrefWidth(220);
+        moveHistoryView.setStyle(
+            "-fx-background-color: rgba(0,0,0,0.55);" +
+            "-fx-background-radius: 8;" +
+            "-fx-border-color: rgba(255,255,255,0.2);" +
+            "-fx-border-radius: 8;"
+        );
+        Label historyTitle = new Label("Move History");
+        historyTitle.setStyle("-fx-text-fill: #aaa; -fx-font-size: 13;");
 
         Button pause  = styledButton("Pause");
         Button resume = styledButton("Resume");
@@ -251,21 +274,14 @@ public class chessboardAI {
         undo  .setOnAction(e -> doUndo());
         redo  .setOnAction(e -> doRedo());
         save  .setOnAction(e -> {
-            try {
-                snapshotSaver.savesnapshopt(Board.getBoard(), turnManager.getCurrentTurn());
-                showAlert("Game saved.");
-            } catch (Exception ex) { showAlert("Save failed."); }
+            try { snapshotSaver.savesnapshopt(Board.getBoard(), turnManager.getCurrentTurn()); showAlert("Game saved."); }
+            catch (Exception ex) { showAlert("Save failed."); }
         });
-        back.setOnAction(e -> {
-            shutdownStockfish();
-            openDashboard();
-        });
-        exit.setOnAction(e -> {
-            shutdownStockfish();
-            if (stageRef != null) stageRef.close();
-        });
+        back.setOnAction(e -> { shutdownStockfish(); openDashboard(); });
+        exit.setOnAction(e -> { shutdownStockfish(); if (stageRef != null) stageRef.close(); });
 
-        VBox box = new VBox(12, blackClock, turnText, whiteClock, statusText,
+        VBox box = new VBox(10, blackClock, turnText, whiteClock, statusText,
+                historyTitle, moveHistoryView,
                 pause, resume, undo, redo, save, back, exit);
         box.setAlignment(Pos.CENTER);
         box.setPadding(new Insets(6));
@@ -276,10 +292,9 @@ public class chessboardAI {
 
     private Button styledButton(String text) {
         Button b = new Button(text);
-        b.setPrefWidth(220);
-        b.setPrefHeight(52);
+        b.setPrefWidth(220); b.setPrefHeight(46);
         b.setStyle(
-            "-fx-font-size: 16; -fx-font-weight: bold;" +
+            "-fx-font-size: 15; -fx-font-weight: bold;" +
             "-fx-background-color: rgba(60,60,60,0.85);" +
             "-fx-text-fill: white; -fx-background-radius: 10;"
         );
@@ -287,8 +302,7 @@ public class chessboardAI {
     }
 
     private StackPane buildPauseOverlay() {
-        Rectangle bg = new Rectangle(900, 740,
-                javafx.scene.paint.Color.rgb(0, 0, 0, 0.55));
+        Rectangle bg = new Rectangle(900, 740, javafx.scene.paint.Color.rgb(0, 0, 0, 0.55));
         Text text = new Text("PAUSED");
         text.setFill(javafx.scene.paint.Color.WHITE);
         text.setStyle("-fx-font-size: 52; -fx-font-weight: bold;");
@@ -300,41 +314,17 @@ public class chessboardAI {
     // ─────────────────────────────── Images ───────────────────────────────
 
     private void loadPieceImages() {
-        whitePawn   = img("/Pawn.jpeg");
-        whiteRook   = img("/white rook.jpeg");
-        whiteKnight = img("/white horse.jpeg");
-        whiteBishop = img("/white bishop.jpeg");
-        whiteQueen  = img("/white queen.jpeg");
-        whiteKing   = img("/white king.jpeg");
-        blackPawn   = img("/black pawn.jpeg");
-        blackRook   = img("/black rook.jpeg");
-        blackKnight = img("/black horse.jpeg");
-        blackBishop = img("/black bishop.jpeg");
-        blackQueen  = img("/black queen.jpeg");
-        blackKing   = img("/black king.jpeg");
+        whitePawn   = img("/Pawn.jpeg");        whiteRook   = img("/white rook.jpeg");
+        whiteKnight = img("/white horse.jpeg"); whiteBishop = img("/white bishop.jpeg");
+        whiteQueen  = img("/white queen.jpeg"); whiteKing   = img("/white king.jpeg");
+        blackPawn   = img("/black pawn.jpeg");  blackRook   = img("/black rook.jpeg");
+        blackKnight = img("/black horse.jpeg"); blackBishop = img("/black bishop.jpeg");
+        blackQueen  = img("/black queen.jpeg"); blackKing   = img("/black king.jpeg");
     }
 
-    private Image img(String classpathPath) {
-        try {
-            var in = getClass().getResourceAsStream(classpathPath);
-            return in != null ? new Image(in) : null;
-        } catch (Exception e) { return null; }
-    }
-
-    private Image getImageForPiece(piece p) {
-        if (p.getColor() == Color.WHITE) {
-            return switch (p.getType()) {
-                case PAWN -> whitePawn; case ROOK -> whiteRook;
-                case KNIGHT -> whiteKnight; case BISHOP -> whiteBishop;
-                case QUEEN -> whiteQueen; case KING -> whiteKing;
-            };
-        } else {
-            return switch (p.getType()) {
-                case PAWN -> blackPawn; case ROOK -> blackRook;
-                case KNIGHT -> blackKnight; case BISHOP -> blackBishop;
-                case QUEEN -> blackQueen; case KING -> blackKing;
-            };
-        }
+    private Image img(String path) {
+        try { var in = getClass().getResourceAsStream(path); return in != null ? new Image(in) : null; }
+        catch (Exception e) { return null; }
     }
 
     // ─────────────────────────────── Rendering ───────────────────────────────
@@ -356,7 +346,12 @@ public class chessboardAI {
     private void resetColors() {
         for (int r = 0; r < 8; r++)
             for (int c = 0; c < 8; c++) {
-                cellRects[r][c].setFill((r + c) % 2 == 0 ? LIGHT_SQ : DARK_SQ);
+                javafx.scene.paint.Color base = (r + c) % 2 == 0
+                        ? GameSettings.getLightSq() : GameSettings.getDarkSq();
+                if ((r == lastFromR && c == lastFromC) || (r == lastToR && c == lastToC))
+                    cellRects[r][c].setFill(LAST_MOVE_COLOR);
+                else
+                    cellRects[r][c].setFill(base);
                 cells[r][c].getChildren().removeIf(n -> "legalDot".equals(n.getId()));
             }
     }
@@ -375,24 +370,7 @@ public class chessboardAI {
             if (clicked != null && clicked.getColor() == Color.WHITE) {
                 selectedPiece = clicked;
                 cellRects[r][c].setFill(SEL_COLOR);
-                List<String> moves = clicked.getPossibleMoves(model);
-                for (String mv : moves) {
-                    if (Board.isMoveLegal(clicked, mv)) {
-                        int[] rc = piece.algebraicToRC(mv);
-                        boolean isCapture = model[rc[0]][rc[1]] != null;
-                        Circle dot = new Circle(isCapture ? 34 : 11);
-                        if (isCapture) {
-                            dot.setFill(javafx.scene.paint.Color.TRANSPARENT);
-                            dot.setStroke(javafx.scene.paint.Color.rgb(80, 220, 80, 0.75));
-                            dot.setStrokeWidth(4);
-                        } else {
-                            dot.setFill(javafx.scene.paint.Color.rgb(80, 220, 80, 0.55));
-                        }
-                        dot.setMouseTransparent(true);
-                        dot.setId("legalDot");
-                        cells[rc[0]][rc[1]].getChildren().add(dot);
-                    }
-                }
+                showLegalDots(clicked, model);
             }
             return;
         }
@@ -403,26 +381,40 @@ public class chessboardAI {
             return;
         }
 
-        int fromR = selectedPiece.getRow();
-        int fromC = selectedPiece.getCol();
-        piecetype movingType    = selectedPiece.getType();
-        Color     movingColor   = selectedPiece.getColor();
+        // Capture tracking before move
+        piece victim = model[r][c];
 
-        String target = piece.rcToAlgebraic(r, c);
-        boolean moved = selectedPiece.move(target);
-        selectedPiece = null;
+        int       fromR      = selectedPiece.getRow();
+        int       fromC      = selectedPiece.getCol();
+        piecetype movingType = selectedPiece.getType();
+        Color     movingClr  = selectedPiece.getColor();
+
+        String  target = piece.rcToAlgebraic(r, c);
+        boolean moved  = selectedPiece.move(target);
+        selectedPiece  = null;
 
         if (moved) {
-            Node animNode = PieceRenderer.createPiece(movingType, movingColor, SIZE);
+            if (victim != null) {
+                capturedByWhite.add(victim.getType());
+                refreshCapturedBars();
+            }
+
+            addMoveToHistory(fromR, fromC, r, c, movingType, Color.WHITE);
+            checkAndPromote(r, c, movingType, Color.WHITE);
+
+            Node animNode = PieceRenderer.createPiece(movingType, movingClr, SIZE);
             aiThinking = true;
             animatePieceMove(fromR, fromC, r, c, animNode, () -> {
                 refreshBoardFromModel();
+                highlightLastMove(fromR, fromC, r, c);
                 aiThinking = false;
 
                 if (Board.isCheckmate(Color.BLACK)) {
-                    if (clock != null) clock.stop();
-                    ChessDialog.showInfo(stageRef, "Checkmate!", "You win! Stockfish is defeated.");
-                    boardGrid.setDisable(true);
+                    showGameOver("You win! Stockfish is defeated.", true);
+                    return;
+                }
+                if (Board.isStalemate(Color.BLACK)) {
+                    showGameOver("Stalemate! It's a draw.", null);
                     return;
                 }
 
@@ -440,27 +432,59 @@ public class chessboardAI {
         }
     }
 
+    // ─────────────────────────────── Legal move dots ───────────────────────────────
+
+    private void showLegalDots(piece p, piece[][] model) {
+        for (String mv : p.getPossibleMoves(model)) {
+            if (Board.isMoveLegal(p, mv)) {
+                int[] rc       = piece.algebraicToRC(mv);
+                boolean isCapt = model[rc[0]][rc[1]] != null;
+                Circle dot = new Circle(isCapt ? 34 : 11);
+                if (isCapt) {
+                    dot.setFill(javafx.scene.paint.Color.TRANSPARENT);
+                    dot.setStroke(javafx.scene.paint.Color.rgb(80, 220, 80, 0.75));
+                    dot.setStrokeWidth(4);
+                } else {
+                    dot.setFill(javafx.scene.paint.Color.rgb(80, 220, 80, 0.55));
+                }
+                dot.setMouseTransparent(true);
+                dot.setId("legalDot");
+                cells[rc[0]][rc[1]].getChildren().add(dot);
+            }
+        }
+    }
+
+    // ─────────────────────────────── Pawn promotion ───────────────────────────────
+
+    private void checkAndPromote(int r, int c, piecetype type, Color color) {
+        if (type != piecetype.PAWN) return;
+        boolean isPromotion = (color == Color.WHITE && r == 0) || (color == Color.BLACK && r == 7);
+        if (!isPromotion) return;
+        String choice = ChessDialog.showConfirm(stageRef, "Pawn Promotion!",
+                "Choose promotion piece:", "Queen", "Rook", "Bishop", "Knight");
+        piecetype newType = switch (choice) {
+            case "Rook"   -> piecetype.ROOK;
+            case "Bishop" -> piecetype.BISHOP;
+            case "Knight" -> piecetype.KNIGHT;
+            default       -> piecetype.QUEEN;
+        };
+        Board.promotePawn(r, c, newType);
+    }
+
     // ─────────────────────────────── AI move ───────────────────────────────
 
     private void triggerAIMove() {
         if (stockfish == null) return;
-
         aiThinking = true;
         setStatus("Stockfish is thinking...");
 
-        // Snapshot the board for FEN (must be done on FX thread before handing off)
-        piece[][] snapshot = Board.getBoard();
-        String fen = StockfishEngine.boardToFen(snapshot, Color.BLACK);
-
+        String fen = StockfishEngine.boardToFen(Board.getBoard(), Color.BLACK);
         new Thread(() -> {
             try {
                 String uci = stockfish.getBestMove(fen, thinkTimeMs);
                 Platform.runLater(() -> applyAIMove(uci));
             } catch (Exception e) {
-                Platform.runLater(() -> {
-                    aiThinking = false;
-                    setStatus("Stockfish error: " + e.getMessage());
-                });
+                Platform.runLater(() -> { aiThinking = false; setStatus("Stockfish error: " + e.getMessage()); });
             }
         }).start();
     }
@@ -468,21 +492,28 @@ public class chessboardAI {
     private void applyAIMove(String uci) {
         if (uci == null) {
             aiThinking = false;
-            ChessDialog.showInfo(stageRef, "Game Over", "Stockfish has no moves — you win!");
-            boardGrid.setDisable(true);
+            showGameOver("Stockfish has no moves — you win!", true);
             return;
         }
 
-        // Find the piece BEFORE applying the move so we can animate it
         Network.Move m = StockfishEngine.uciToMove(uci);
         piece[][] boardState = Board.getBoard();
+
+        // Track capture before applying move
+        piece victim = (m != null) ? boardState[m.toRow][m.toCol] : null;
+        if (victim != null) {
+            capturedByBlack.add(victim.getType());
+            refreshCapturedBars();
+        }
+
         piece movingPiece = (m != null) ? boardState[m.fromRow][m.fromCol] : null;
-        Node movingNode = (movingPiece != null)
+        Node  movingNode  = (movingPiece != null)
                 ? PieceRenderer.createPiece(movingPiece.getType(), movingPiece.getColor(), SIZE) : null;
+
+        piecetype movingType = (movingPiece != null) ? movingPiece.getType() : piecetype.PAWN;
 
         boolean moved = StockfishEngine.applyUciMove(uci);
         if (!moved) {
-            System.out.println("AI move not applied: " + uci);
             aiThinking = false;
             turnManager.endTurn();
             updateTurnText();
@@ -493,14 +524,20 @@ public class chessboardAI {
         int toR = m.toRow, toC = m.toCol;
         int fromR = m.fromRow, fromC = m.fromCol;
 
+        addMoveToHistory(fromR, fromC, toR, toC, movingType, Color.BLACK);
+        checkAndPromote(toR, toC, movingType, Color.BLACK);
+
         animatePieceMove(fromR, fromC, toR, toC, movingNode, () -> {
             refreshBoardFromModel();
+            highlightLastMove(fromR, fromC, toR, toC);
             aiThinking = false;
 
             if (Board.isCheckmate(Color.WHITE)) {
-                if (clock != null) clock.stop();
-                ChessDialog.showInfo(stageRef, "Checkmate!", "Stockfish wins. Better luck next time!");
-                boardGrid.setDisable(true);
+                showGameOver("Stockfish wins. Better luck next time!", false);
+                return;
+            }
+            if (Board.isStalemate(Color.WHITE)) {
+                showGameOver("Stalemate! It's a draw.", null);
                 return;
             }
 
@@ -517,35 +554,104 @@ public class chessboardAI {
         });
     }
 
+    // ─────────────────────────────── Move history ───────────────────────────────
+
+    private void addMoveToHistory(int fr, int fc, int tr, int tc,
+                                   piecetype type, Color color) {
+        halfMoveCount++;
+        String pieceStr = switch (type) {
+            case PAWN -> ""; case ROOK -> "R"; case KNIGHT -> "N";
+            case BISHOP -> "B"; case QUEEN -> "Q"; case KING -> "K";
+        };
+        String from = "" + FILES.charAt(fc) + (8 - fr);
+        String to   = "" + FILES.charAt(tc) + (8 - tr);
+        int moveNum = (halfMoveCount + 1) / 2;
+        String entry = color == Color.WHITE
+                ? moveNum + ". " + pieceStr + from + "-" + to
+                : "    " + pieceStr + from + "-" + to;
+        if (moveHistoryView != null) {
+            moveHistoryView.getItems().add(entry);
+            moveHistoryView.scrollTo(moveHistoryView.getItems().size() - 1);
+        }
+    }
+
+    // ─────────────────────────────── Captured pieces ───────────────────────────────
+
+    private void refreshCapturedBars() {
+        capturedTopLabel.setText(buildCapturedStr(capturedByBlack, Color.WHITE));
+        capturedBottomLabel.setText(buildCapturedStr(capturedByWhite, Color.BLACK));
+    }
+
+    private String buildCapturedStr(List<piecetype> types, Color capturedColor) {
+        StringBuilder sb = new StringBuilder();
+        for (piecetype t : types) sb.append(pieceSymbol(t, capturedColor));
+        return sb.toString();
+    }
+
+    private String pieceSymbol(piecetype t, Color color) {
+        if (color == Color.WHITE) return switch (t) {
+            case PAWN -> "♙"; case ROOK -> "♖"; case KNIGHT -> "♘";
+            case BISHOP -> "♗"; case QUEEN -> "♕"; case KING -> "♔";
+        };
+        return switch (t) {
+            case PAWN -> "♟"; case ROOK -> "♜"; case KNIGHT -> "♞";
+            case BISHOP -> "♝"; case QUEEN -> "♛"; case KING -> "♚";
+        };
+    }
+
+    // ─────────────────────────────── Game over ───────────────────────────────
+
+    /**
+     * @param humanWon true = human won, false = AI won, null = draw
+     */
+    private void showGameOver(String message, Boolean humanWon) {
+        if (clock != null) clock.stop();
+        boardGrid.setDisable(true);
+
+        if (humanWon != null) {
+            if (humanWon) {
+                rating += 25;
+            } else {
+                rating = Math.max(0, rating - 15);
+            }
+        } else {
+            rating += 10;
+        }
+        Loginpage.updateRating(username, rating);
+
+        ChessDialog.showInfo(stageRef, "Game Over", message + "\n\nYour new rating: " + rating);
+    }
+
+    // ─────────────────────────────── Last move highlight ───────────────────────────────
+
+    private void highlightLastMove(int fr, int fc, int tr, int tc) {
+        lastFromR = fr; lastFromC = fc; lastToR = tr; lastToC = tc;
+        cellRects[fr][fc].setFill(LAST_MOVE_COLOR);
+        cellRects[tr][tc].setFill(LAST_MOVE_COLOR);
+    }
+
     // ─────────────────────────────── Animation ───────────────────────────────
 
     private void animatePieceMove(int fromR, int fromC, int toR, int toC,
                                    Node pieceNode, Runnable onComplete) {
         if (pieceNode == null || animationLayer == null) { onComplete.run(); return; }
-
         cells[fromR][fromC].getChildren().removeIf(n -> "pieceNode".equals(n.getId()));
 
-        Bounds fromB    = cells[fromR][fromC].localToScene(cells[fromR][fromC].getBoundsInLocal());
-        Bounds toB      = cells[toR][toC].localToScene(cells[toR][toC].getBoundsInLocal());
-        Bounds overlayB = animationLayer.localToScene(animationLayer.getBoundsInLocal());
+        var fromB    = cells[fromR][fromC].localToScene(cells[fromR][fromC].getBoundsInLocal());
+        var toB      = cells[toR][toC].localToScene(cells[toR][toC].getBoundsInLocal());
+        var overlayB = animationLayer.localToScene(animationLayer.getBoundsInLocal());
 
         double startX = fromB.getMinX() - overlayB.getMinX();
         double startY = fromB.getMinY() - overlayB.getMinY();
-        double endX   = toB.getMinX()   - overlayB.getMinX();
-        double endY   = toB.getMinY()   - overlayB.getMinY();
-
         pieceNode.setLayoutX(startX);
         pieceNode.setLayoutY(startY);
         animationLayer.getChildren().add(pieceNode);
 
         TranslateTransition tt = new TranslateTransition(Duration.millis(320), pieceNode);
-        tt.setByX(endX - startX);
-        tt.setByY(endY - startY);
+        tt.setByX(toB.getMinX() - overlayB.getMinX() - startX);
+        tt.setByY(toB.getMinY() - overlayB.getMinY() - startY);
         tt.setInterpolator(Interpolator.EASE_BOTH);
-        tt.setOnFinished(e -> {
-            animationLayer.getChildren().remove(pieceNode);
-            onComplete.run();
-        });
+        tt.setOnFinished(e -> { animationLayer.getChildren().remove(pieceNode); onComplete.run(); });
         tt.play();
     }
 
@@ -562,6 +668,10 @@ public class chessboardAI {
                     turnManager = new Playerturn(prev.getSnapshotColor());
                 refreshBoardFromModel();
                 updateTurnText();
+                if (moveHistoryView != null && !moveHistoryView.getItems().isEmpty())
+                    moveHistoryView.getItems().remove(moveHistoryView.getItems().size() - 1);
+                if (halfMoveCount > 0) halfMoveCount--;
+                lastFromR = -1; resetColors();
             }
         } catch (Exception ignored) {}
     }
@@ -584,33 +694,22 @@ public class chessboardAI {
     // ─────────────────────────────── Helpers ───────────────────────────────
 
     private void updateTurnText() {
-        if (turnText != null)
-            turnText.setText("Turn: " + turnManager.getCurrentTurn());
+        if (turnText != null) turnText.setText("Turn: " + turnManager.getCurrentTurn());
     }
 
-    private void setStatus(String msg) {
-        if (statusText != null) statusText.setText(msg);
-    }
-
-    private void showAlert(String msg) {
-        ChessDialog.showInfo(stageRef, "Chess", msg);
-    }
+    private void setStatus(String msg) { if (statusText != null) statusText.setText(msg); }
+    private void showAlert(String msg) { ChessDialog.showInfo(stageRef, "Chess", msg); }
 
     private void openDashboard() {
         try {
             DashBoardView dash = new DashBoardView(username, rating, stageRef);
-            Scene dashScene = new Scene(dash, 900, 700);
             stageRef.setTitle("Chess - Dashboard");
-            stageRef.setScene(dashScene);
-        } catch (Exception e) {
-            showAlert("Could not open dashboard.");
-        }
+            stageRef.setScene(new Scene(dash, 900, 700));
+        } catch (Exception e) { showAlert("Could not open dashboard."); }
     }
 
     private void shutdownStockfish() {
         if (clock != null) clock.stop();
-        if (stockfish != null) {
-            new Thread(() -> stockfish.stop()).start();
-        }
+        if (stockfish != null) new Thread(() -> stockfish.stop()).start();
     }
 }

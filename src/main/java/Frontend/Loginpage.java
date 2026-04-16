@@ -9,6 +9,7 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import java.io.*;
 import java.nio.file.*;
+import java.util.List;
 import java.util.Optional;
 
 public class Loginpage extends Application {
@@ -224,6 +225,26 @@ public class Loginpage extends Application {
             showAlert(Alert.AlertType.ERROR, "File Error", "Could not read users.txt\n" + e.getMessage());
         }
         return Optional.empty();
+    }
+
+    /** Update the stored rating for a given username in users.txt. */
+    public static void updateRating(String username, int newRating) {
+        if (username == null || username.isBlank()) return;
+        try {
+            Path file = USERS_FILE;
+            if (Files.notExists(file)) return;
+            List<String> lines = Files.readAllLines(file);
+            List<String> updated = new java.util.ArrayList<>();
+            for (String line : lines) {
+                String[] parts = line.split("\\|");
+                if (parts.length == 3 && parts[0].trim().equalsIgnoreCase(username)) {
+                    updated.add(parts[0].trim() + "|" + parts[1].trim() + "|" + newRating);
+                } else {
+                    updated.add(line);
+                }
+            }
+            Files.write(file, updated);
+        } catch (IOException ignored) {}
     }
 
     private void ensureUsersFileExists() {

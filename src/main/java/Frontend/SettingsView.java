@@ -224,7 +224,7 @@ public class SettingsView extends BorderPane {
         themeLabel.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
         themeComboBox = new ComboBox<>();
         themeComboBox.getItems().addAll("Classic", "Wood", "Marble", "Modern", "Dark");
-        themeComboBox.setValue("Classic");
+        themeComboBox.setValue(GameSettings.getCurrentTheme());
         themeComboBox.setPrefWidth(200);
 
         VBox visualBox = new VBox(15,
@@ -294,21 +294,13 @@ public class SettingsView extends BorderPane {
     }
 
     private void handleSaveSettings() {
-        System.out.println("Settings saved:");
-        System.out.println("Sound: " + enableSoundCheckBox.isSelected());
-        System.out.println("Sound Volume: " + soundVolumeSlider.getValue());
-        System.out.println("Music: " + enableMusicCheckBox.isSelected());
-        System.out.println("Music Volume: " + musicVolumeSlider.getValue());
-        System.out.println("Theme: " + themeComboBox.getValue());
-        System.out.println("Difficulty: " + difficultyComboBox.getValue());
-        System.out.println("Show Hints: " + showHintsCheckBox.isSelected());
-        System.out.println("Highlight Moves: " + highlightMovesCheckBox.isSelected());
+        // Apply board theme globally
+        GameSettings.setTheme(themeComboBox.getValue());
 
-        // Show confirmation
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("Settings Saved");
         alert.setHeaderText(null);
-        alert.setContentText("Your settings have been saved successfully!");
+        alert.setContentText("Settings saved! Board theme \"" + themeComboBox.getValue() + "\" will apply in the next game.");
         alert.showAndWait();
     }
 
@@ -317,12 +309,11 @@ public class SettingsView extends BorderPane {
         musicVolumeSlider.setValue(50);
         enableSoundCheckBox.setSelected(true);
         enableMusicCheckBox.setSelected(true);
-        themeComboBox.setValue("Classic");
+        themeComboBox.setValue("Dark");
         difficultyComboBox.setValue("Medium");
         showHintsCheckBox.setSelected(true);
         highlightMovesCheckBox.setSelected(true);
-
-        System.out.println("Settings reset to defaults");
+        GameSettings.setTheme("Dark");
     }
 
     private void handleBackToDashboard() {

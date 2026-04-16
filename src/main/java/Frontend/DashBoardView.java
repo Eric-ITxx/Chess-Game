@@ -301,23 +301,20 @@ public class DashBoardView extends BorderPane {
     }
 
     private void handlePlayerVsPlayer() {
-        System.out.println("Player vs Player mode selected");
-
         try {
-            chessboard chessGame = new chessboard();// ✅ Application class
-
-            chessGame.start(stage);                   // ✅ runs chessboard
+            chessboard chessGame = new chessboard();
+            chessGame.setUsername(username);
+            chessGame.setRating(rating);
+            chessGame.start(stage);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-
-
-
     private void handlePlayerVsBot() {
-        System.out.println("Player vs Bot mode selected");
         chessboardAI chessGame = new chessboardAI();
+        chessGame.setUsername(username);
+        chessGame.setRating(rating);
         chessGame.start(stage);
     }
 

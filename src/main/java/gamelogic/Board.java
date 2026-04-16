@@ -158,6 +158,39 @@ public class Board {
         return true;
     }
     // -----------------------------------
+    /** Returns true when the given color has no legal moves AND is NOT in check (stalemate). */
+    public static boolean isStalemate(Color color) {
+        if (isKingInCheck(color, board)) return false; // in check = not stalemate
+        for (int r = 0; r < SIZE; r++) {
+            for (int c = 0; c < SIZE; c++) {
+                piece p = board[r][c];
+                if (p != null && p.getColor() == color) {
+                    List<String> moves = p.getPossibleMoves(board);
+                    for (String mv : moves) {
+                        if (isMoveLegal(p, mv)) return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Replace the pawn at (row,col) with the chosen promotion piece in-place. */
+    public static void promotePawn(int row, int col, piecetype newType) {
+        piece pawn = board[row][col];
+        if (pawn == null || pawn.getType() != piecetype.PAWN) return;
+        Color color = pawn.getColor();
+        String pos = piece.rcToAlgebraic(row, col);
+        piece promoted = switch (newType) {
+            case ROOK   -> new Rook(pos, color);
+            case BISHOP -> new Bishop(pos, color);
+            case KNIGHT -> new Knight(pos, color);
+            default     -> new Queen(pos, color);
+        };
+        board[row][col] = promoted;
+    }
+
+    // -----------------------------------
     public static List<piece> getPieces(Color color) {
         List<piece> pieces = new ArrayList<>();
         for (int r = 0; r < SIZE; r++) {
